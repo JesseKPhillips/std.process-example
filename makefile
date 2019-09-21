@@ -8,3 +8,6 @@ reverse:
 
 talk:
 	dmd talk.d
+
+run: all
+	./talk
