@@ -1,12 +1,12 @@
 all: check reverse talk
 
-check:
+check: check.d
 	dmd check.d
 
-reverse:
+reverse: reverse.d
 	dmd reverse.d
 
-talk:
+talk: talk.d
 	dmd talk.d
 
 run: all
