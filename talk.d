@@ -1,11 +1,13 @@
-// Written for Linux as /dev/null is utilized
-import std.algorithm;
-import std.parallelism;
-import std.process;
-import std.range;
 import std.stdio;
+import std.process;
+import std.conv;
+import std.array;
+import std.range;
+import std.algorithm;
 
 /**
+ * Update: https://forum.dlang.org/post/hbrfvliocdfhtbfeuypw@forum.dlang.org
+ *
  * Connect the relative programs 'reverse' and 'check'
  * utilizing std.process.
  *
@@ -16,51 +18,19 @@ import std.stdio;
  *               command 2>&1 >/dev/null | grep 'something'
  *    -> ./reverse hello 2>&1 >/dev/null | ./check hello
  */
-void main() {
+void main ()
+{
+   auto proc1Error = pipe ();
+   auto reverse = spawnProcess (["./reverse", "hello"], stdin, stdout, proc1Error.writeEnd);
 
-    // Start process execution and provide redirection pipes
-    auto reverse = pipeProcess(["./reverse", "hello"]
-                               , Redirect.stdout | Redirect.stderr);
-    auto check   = pipeProcess(["./check", "hello"]
-                               , Redirect.all);
+   auto proc2Output = pipe ();
+   auto check = spawnProcess (["./check", "hello"], proc1Error.readEnd, proc2Output.writeEnd);
 
-    auto pipeError() {
-        reverse.stderr.byChunk(2048)
-            .copy(check.stdin.lockingBinaryWriter());
-    }
+   auto os = appender!string;
+   proc2Output.readEnd.byChunk (4096).copy (os);
 
-    auto pipeOutput() {
-        reverse.stdout.byChunk(2048)
-            .copy(File("/dev/null", "w").lockingBinaryWriter());
-    }
+   auto proc2Status = wait (check);
+   auto proc1Status = wait (reverse);
 
-    // Execute forwarding on own threads
-    // This prevents filling the output buffers
-    auto t1 = task(&pipeError);
-    auto t2 = task(&pipeOutput);
-    t1.executeInNewThread;
-    t2.executeInNewThread;
-
-    // Store output into memory.
-    auto errors = appender!string;
-    auto t3 = task(() => check.stderr.byChunk(2048).copy(errors));
-    t3.executeInNewThread;
-    auto output = appender!string;
-    auto t4 = task(() => check.stdout.byChunk(2048).copy(output));
-    t4.executeInNewThread;
-
-    wait(reverse.pid);
-    t1.yieldForce;
-    t2.yieldForce;
-    // reverse will no longer be writing data
-    // Close the input pipe for the dependant process 'check'.
-    // https://stackoverflow.com/questions/47486128/why-does-io-pipe-continue-to-block-even-when-eof-is-reached
-    check.stdin.close();
-
-    wait(check.pid);
-    t3.yieldForce;
-    t4.yieldForce;
-
-    writeln("errors: ", errors[]);
-    writeln("output: ", output[]);
+   write (os[]);
 }
